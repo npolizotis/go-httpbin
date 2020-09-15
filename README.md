@@ -1,5 +1,17 @@
 # go-httpbin
 
+Before 
+
+```bash
+> ls -l dist/
+total 11448
+-rwxr-xr-x  1 npolyzotis  staff  5859664 Sep 15 15:32 go-httpbin
+```
+
+go generate  httpbin/assets/assets_util.go 
+
+
+
 A reasonably complete and well-tested golang port of [Kenneth Reitz][kr]'s
 [httpbin][httpbin-org] service, with zero dependencies outside the go stdlib.
 

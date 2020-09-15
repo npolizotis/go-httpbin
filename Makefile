@@ -31,7 +31,8 @@ GENERATED_ASSETS_PATH := httpbin/assets/assets.go
 # =============================================================================
 build: $(DIST_PATH)/go-httpbin
 
-$(DIST_PATH)/go-httpbin: assets $(GO_SOURCES)
+#$(DIST_PATH)/go-httpbin: assets 
+$(DIST_PATH)/go-httpbin: $(GO_SOURCES)
 	mkdir -p $(DIST_PATH)
 	CGO_ENABLED=0 go build -ldflags="-s -w" -o $(DIST_PATH)/go-httpbin ./cmd/go-httpbin
 
