@@ -8,8 +8,11 @@ total 11448
 -rwxr-xr-x  1 npolyzotis  staff  5859664 Sep 15 15:32 go-httpbin
 ```
 
-go generate  httpbin/assets/assets_util.go 
-
+### vfsgen version
+```bash
+ls -l dist/go-httpbin 
+-rwxr-xr-x  1 npolyzotis  staff  5881600 Sep 15 18:48 dist/go-httpbin
+```
 
 
 A reasonably complete and well-tested golang port of [Kenneth Reitz][kr]'s

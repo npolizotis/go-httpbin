@@ -3,17 +3,15 @@ package assets
 
 import (
 	"io/ioutil"
-	"path/filepath"
 )
 
-const pathPrefix = "static"
 
 //go:generate broccoli -src ../../static/ -o assets -var broccoli
 
 // MustLoad loads the file.
 // Panics on any error
 func MustLoad(filename string) []byte {
-	fs, err := broccoli.Open(filepath.Join(pathPrefix, filename))
+	fs, err := Assets.Open(filename)
 	if err != nil {
 		panic(err)
 	}
@@ -27,7 +25,7 @@ func MustLoad(filename string) []byte {
 
 // Load the filename or error
 func Load(filename string) ([]byte, error) {
-	fs, err := broccoli.Open(filepath.Join(pathPrefix, filename))
+	fs, err := Assets.Open(filename)
 	if err != nil {
 		return nil, err
 	}

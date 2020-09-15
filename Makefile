@@ -24,18 +24,19 @@ TOOL_STATICCHECK := $(TOOL_BIN_DIR)/staticcheck
 
 GO_SOURCES = $(wildcard **/*.go) $(wildcard **/*/*.go)
 
-GENERATED_ASSETS_PATH := httpbin/assets/assets.go
+GENERATED_ASSETS_PATH := httpbin/assets/assets_vfsdata.go
 
 # =============================================================================
 # build
 # =============================================================================
+.PHONY: build
 build: $(DIST_PATH)/go-httpbin
 
-#$(DIST_PATH)/go-httpbin: assets 
-$(DIST_PATH)/go-httpbin: $(GO_SOURCES)
+$(DIST_PATH)/go-httpbin : assets $(GO_SOURCES)
 	mkdir -p $(DIST_PATH)
 	CGO_ENABLED=0 go build -ldflags="-s -w" -o $(DIST_PATH)/go-httpbin ./cmd/go-httpbin
 
+.PHONY: assets 
 assets: $(GENERATED_ASSETS_PATH)
 
 buildtests:
@@ -44,14 +45,8 @@ buildtests:
 clean:
 	rm -rf $(DIST_PATH) $(COVERAGE_PATH)
 
-$(GENERATED_ASSETS_PATH): $(TOOL_GOBINDATA) static/*
-	$(TOOL_GOBINDATA) -o $(GENERATED_ASSETS_PATH) -pkg=assets -prefix=static static
-	# reformat generated code
-	gofmt -s -w $(GENERATED_ASSETS_PATH)
-	# dumb hack to make generate code lint correctly
-	sed -i.bak 's/Html/HTML/g' $(GENERATED_ASSETS_PATH)
-	sed -i.bak 's/Xml/XML/g' $(GENERATED_ASSETS_PATH)
-	rm $(GENERATED_ASSETS_PATH).bak
+$(GENERATED_ASSETS_PATH):  static/*
+	go run -tags=dev  cmd/assets_generate.go && mv -f  assets_vfsdata.go httpbin/assets/
 
 
 # =============================================================================
