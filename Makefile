@@ -18,7 +18,6 @@ TEST_ARGS     ?= -race
 
 # Tool dependencies
 TOOL_BIN_DIR     ?= $(shell go env GOPATH)/bin
-TOOL_GOBINDATA   := $(TOOL_BIN_DIR)/go-bindata
 TOOL_GOLINT      := $(TOOL_BIN_DIR)/golint
 TOOL_STATICCHECK := $(TOOL_BIN_DIR)/staticcheck
 
@@ -43,7 +42,7 @@ buildtests:
 	CGO_ENABLED=0 go test -ldflags="-s -w" -v -c -o $(DIST_PATH)/go-httpbin.test ./httpbin
 
 clean:
-	rm -rf $(DIST_PATH) $(COVERAGE_PATH)
+	rm -rf $(DIST_PATH) $(COVERAGE_PATH) $(GENERATED_ASSETS_PATH)
 
 $(GENERATED_ASSETS_PATH):  static/*
 	go run -tags=dev  cmd/assets_generate.go && mv -f  assets_vfsdata.go httpbin/assets/
@@ -99,10 +98,7 @@ imagepush: image
 #
 # Deps are installed outside of working dir to avoid polluting go modules
 # =============================================================================
-deps: $(TOOL_GOBINDATA) $(TOOL_GOLINT) $(TOOL_STATICCHECK)
-
-$(TOOL_GOBINDATA):
-	cd /tmp && go get -u github.com/kevinburke/go-bindata/...
+deps:  $(TOOL_GOLINT) $(TOOL_STATICCHECK)
 
 $(TOOL_GOLINT):
 	cd /tmp && go get -u golang.org/x/lint/golint
