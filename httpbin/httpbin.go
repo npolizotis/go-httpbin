@@ -190,12 +190,6 @@ func (h *HTTPBin) Handler() http.Handler {
 
 	mux.HandlerFunc(http.MethodGet, "/uuid", h.UUID)
 	
-	/*
-	helper400:=func (w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
-		 http.Error(w,"Bad request",http.StatusBadRequest)
-	 }
-	 */
-
 	mux.GET("/base64/",h.Base64)
 	mux.GET("/base64/:arg1", h.Base64)
 	mux.GET("/base64/:arg1/",h.Base64)
