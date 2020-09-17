@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/julienschmidt/httprouter"
 	"github.com/npolizotis/go-httpbin/httpbin/assets"
 	"github.com/npolizotis/go-httpbin/httpbin/digest"
 )
@@ -145,13 +146,13 @@ func (h *HTTPBin) Headers(w http.ResponseWriter, r *http.Request) {
 
 // Status responds with the specified status code. TODO: support random choice
 // from multiple, optionally weighted status codes.
-func (h *HTTPBin) Status(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) != 3 {
-		http.Error(w, "Not found", http.StatusNotFound)
+func (h *HTTPBin) Status(w http.ResponseWriter, r *http.Request, param httprouter.Params) {
+	codeStr := param.ByName("code")
+	if codeStr == "" {
+		http.Error(w, "Invalid status", http.StatusBadRequest)
 		return
 	}
-	code, err := strconv.Atoi(parts[2])
+	code, err := strconv.Atoi(codeStr)
 	if err != nil {
 		http.Error(w, "Invalid status", http.StatusBadRequest)
 		return
@@ -366,14 +367,14 @@ func (h *HTTPBin) DeleteCookies(w http.ResponseWriter, r *http.Request) {
 }
 
 // BasicAuth requires basic authentication
-func (h *HTTPBin) BasicAuth(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) != 4 {
+func (h *HTTPBin) BasicAuth(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+	expectedUser := params.ByName("user")
+	expectedPass := params.ByName("password")
+
+	if expectedUser == "" || expectedPass == "" {
 		http.Error(w, "Not Found", http.StatusNotFound)
 		return
 	}
-	expectedUser := parts[2]
-	expectedPass := parts[3]
 
 	givenUser, givenPass, _ := r.BasicAuth()
 
@@ -393,14 +394,14 @@ func (h *HTTPBin) BasicAuth(w http.ResponseWriter, r *http.Request) {
 
 // HiddenBasicAuth requires HTTP Basic authentication but returns a status of
 // 404 if the request is unauthorized
-func (h *HTTPBin) HiddenBasicAuth(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) != 4 {
+func (h *HTTPBin) HiddenBasicAuth(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+	expectedUser := params.ByName("user")
+	expectedPass := params.ByName("password")
+
+	if expectedUser == "" || expectedPass == "" {
 		http.Error(w, "Not Found", http.StatusNotFound)
 		return
 	}
-	expectedUser := parts[2]
-	expectedPass := parts[3]
 
 	givenUser, givenPass, _ := r.BasicAuth()
 
@@ -418,13 +419,8 @@ func (h *HTTPBin) HiddenBasicAuth(w http.ResponseWriter, r *http.Request) {
 }
 
 // Stream responds with max(n, 100) lines of JSON-encoded request data.
-func (h *HTTPBin) Stream(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) != 3 {
-		http.Error(w, "Not found", http.StatusNotFound)
-		return
-	}
-	n, err := strconv.Atoi(parts[2])
+func (h *HTTPBin) Stream(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+	n, err := strconv.Atoi(params.ByName("n"))
 	if err != nil {
 		http.Error(w, "Invalid integer", http.StatusBadRequest)
 		return
@@ -455,14 +451,9 @@ func (h *HTTPBin) Stream(w http.ResponseWriter, r *http.Request) {
 
 // Delay waits for a given amount of time before responding, where the time may
 // be specified as a golang-style duration or seconds in floating point.
-func (h *HTTPBin) Delay(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) != 3 {
-		http.Error(w, "Not found", http.StatusNotFound)
-		return
-	}
+func (h *HTTPBin) Delay(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 
-	delay, err := parseBoundedDuration(parts[2], 0, h.MaxDuration)
+	delay, err := parseBoundedDuration(params.ByName("delay"), 0, h.MaxDuration)
 	if err != nil {
 		http.Error(w, "Invalid duration", http.StatusBadRequest)
 		return
@@ -557,14 +548,9 @@ func (h *HTTPBin) Drip(w http.ResponseWriter, r *http.Request) {
 //
 // This departs from httpbin by not supporting the chunk_size or duration
 // parameters.
-func (h *HTTPBin) Range(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) != 3 {
-		http.Error(w, "Not found", http.StatusNotFound)
-		return
-	}
+func (h *HTTPBin) Range(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 
-	numBytes, err := strconv.ParseInt(parts[2], 10, 64)
+	numBytes, err := strconv.ParseInt(params.ByName("range"), 10, 64)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -618,14 +604,10 @@ func (h *HTTPBin) Cache(w http.ResponseWriter, r *http.Request) {
 }
 
 // CacheControl sets a Cache-Control header for N seconds for /cache/N requests
-func (h *HTTPBin) CacheControl(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) != 3 {
-		http.Error(w, "Not found", http.StatusNotFound)
-		return
-	}
+func (h *HTTPBin) CacheControl(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+	
 
-	seconds, err := strconv.ParseInt(parts[2], 10, 64)
+	seconds, err := strconv.ParseInt(params.ByName("seconds"), 10, 64)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -637,14 +619,9 @@ func (h *HTTPBin) CacheControl(w http.ResponseWriter, r *http.Request) {
 
 // ETag assumes the resource has the given etag and response to If-None-Match
 // and If-Match headers appropriately.
-func (h *HTTPBin) ETag(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) != 3 {
-		http.Error(w, "Not found", http.StatusNotFound)
-		return
-	}
+func (h *HTTPBin) ETag(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 
-	etag := parts[2]
+	etag := params.ByName("etag")
 	w.Header().Set("ETag", fmt.Sprintf(`"%s"`, etag))
 
 	// TODO: This mostly duplicates the work of Get() above, should this be
@@ -663,27 +640,22 @@ func (h *HTTPBin) ETag(w http.ResponseWriter, r *http.Request) {
 }
 
 // Bytes returns N random bytes generated with an optional seed
-func (h *HTTPBin) Bytes(w http.ResponseWriter, r *http.Request) {
-	handleBytes(w, r, false)
+func (h *HTTPBin) Bytes(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+	handleBytes(w, r, false,params)
 }
 
 // StreamBytes streams N random bytes generated with an optional seed in chunks
 // of a given size.
-func (h *HTTPBin) StreamBytes(w http.ResponseWriter, r *http.Request) {
-	handleBytes(w, r, true)
+func (h *HTTPBin) StreamBytes(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+	handleBytes(w, r, true,params)
 }
 
 // handleBytes consolidates the logic for validating input params of the Bytes
 // and StreamBytes endpoints and knows how to write the response in chunks if
 // streaming is true.
-func handleBytes(w http.ResponseWriter, r *http.Request, streaming bool) {
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) != 3 {
-		http.Error(w, "Not found", http.StatusNotFound)
-		return
-	}
+func handleBytes(w http.ResponseWriter, r *http.Request, streaming bool, params httprouter.Params) {
 
-	numBytes, err := strconv.Atoi(parts[2])
+	numBytes, err := strconv.Atoi(params.ByName("numBytes"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -756,22 +728,18 @@ func handleBytes(w http.ResponseWriter, r *http.Request, streaming bool) {
 }
 
 // Links redirects to the first page in a series of N links
-func (h *HTTPBin) Links(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) != 3 && len(parts) != 4 {
-		http.Error(w, "Not found", http.StatusNotFound)
-		return
-	}
+func (h *HTTPBin) Links(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 
-	n, err := strconv.Atoi(parts[2])
+	n, err := strconv.Atoi(params.ByName("n"))
 	if err != nil || n < 0 || n > 256 {
 		http.Error(w, "Invalid link count", http.StatusBadRequest)
 		return
 	}
 
 	// Are we handling /links/<n>/<offset>? If so, render an HTML page
-	if len(parts) == 4 {
-		offset, err := strconv.Atoi(parts[3])
+	offset:=params.ByName("offset")
+	if offset!="" {
+		offset, err := strconv.Atoi(offset)
 		if err != nil {
 			http.Error(w, "Invalid offset", http.StatusBadRequest)
 		}
@@ -818,13 +786,15 @@ func (h *HTTPBin) ImageAccept(w http.ResponseWriter, r *http.Request) {
 }
 
 // Image responds with an image of a specific kind, from /image/<kind>
-func (h *HTTPBin) Image(w http.ResponseWriter, r *http.Request) {
+func (h *HTTPBin) Image(w http.ResponseWriter, r *http.Request,params httprouter.Params) {
+	/*
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) != 3 {
 		http.Error(w, "Not found", http.StatusNotFound)
 		return
 	}
-	doImage(w, parts[2])
+	*/
+	doImage(w, params.ByName("kind"))
 }
 
 // doImage responds with a specific kind of image, if there is an image asset
@@ -851,22 +821,23 @@ func (h *HTTPBin) XML(w http.ResponseWriter, r *http.Request) {
 //
 // /digest-auth/<qop>/<user>/<passwd>
 // /digest-auth/<qop>/<user>/<passwd>/<algorithm>
-func (h *HTTPBin) DigestAuth(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(r.URL.Path, "/")
-	count := len(parts)
+func (h *HTTPBin) DigestAuth(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+	/*
+		parts := strings.Split(r.URL.Path, "/")
+		count := len(parts)
 
-	if count != 5 && count != 6 {
-		http.Error(w, "Not Found", http.StatusNotFound)
-		return
-	}
+		if count != 5 && count != 6 {
+			http.Error(w, "Not Found", http.StatusNotFound)
+			return
+		}
+	*/
+	qop := strings.ToLower(params.ByName("qop"))
+	user := params.ByName("user")
+	password := params.ByName("passwd")
 
-	qop := strings.ToLower(parts[2])
-	user := parts[3]
-	password := parts[4]
-
-	algoName := "MD5"
-	if count == 6 {
-		algoName = strings.ToUpper(parts[5])
+	algoName := params.ByName("algorithm")
+	if algoName == "" {
+		algoName = "MD5"
 	}
 
 	if qop != "auth" {
@@ -905,8 +876,23 @@ func (h *HTTPBin) UUID(w http.ResponseWriter, r *http.Request) {
 }
 
 // Base64 - encodes/decodes input data
-func (h *HTTPBin) Base64(w http.ResponseWriter, r *http.Request) {
-	b, err := newBase64Helper(r.URL.Path)
+func (h *HTTPBin) Base64(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+
+	//up to two params in the URL
+	mode,data:=params.ByName("arg1"),params.ByName("arg2")
+
+	
+	if data=="" {
+		data=mode
+		mode=""
+	}
+
+	if len(params)>2 || r.URL.Path[len(r.URL.Path)-1]=='/' {
+		http.Error(w, "invalid URL\n", http.StatusBadRequest)
+		return
+	}
+
+	b, err := newBase64Helper(mode,data)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("%s", err), http.StatusBadRequest)
 		return

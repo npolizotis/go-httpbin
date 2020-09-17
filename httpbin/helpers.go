@@ -258,28 +258,26 @@ type base64Helper struct {
 // - /base64/input_str
 // - /base64/encode/input_str
 // - /base64/decode/input_str
-func newBase64Helper(path string) (*base64Helper, error) {
-	parts := strings.Split(path, "/")
-
-	if len(parts) != 3 && len(parts) != 4 {
+func newBase64Helper(mode,data string) (*base64Helper, error) {
+	
+	if mode=="" && data=="" {
 		return nil, errors.New("invalid URL")
 	}
 
 	var b base64Helper
 
+	b.data = data
 	// Validation for - /base64/input_str
-	if len(parts) == 3 {
+	if mode=="" {
 		b.operation = "decode"
-		b.data = parts[2]
 	} else {
 		// Validation for
 		// - /base64/encode/input_str
 		// - /base64/encode/input_str
-		b.operation = parts[2]
+		b.operation = mode
 		if b.operation != "encode" && b.operation != "decode" {
 			return nil, fmt.Errorf("invalid operation: %s", b.operation)
 		}
-		b.data = parts[3]
 	}
 	if len(b.data) == 0 {
 		return nil, errors.New("no input data")

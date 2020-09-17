@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/julienschmidt/httprouter"
 )
 
 // Default configuration values
@@ -98,88 +100,110 @@ type HTTPBin struct {
 	Observer Observer
 }
 
+type myRouter struct {
+	httprouter.Router
+}
+
+func (r *myRouter) HandlerFunc(method, path string, hf http.HandlerFunc) {
+	r.Router.HandlerFunc(method, path, hf)
+	if method == http.MethodGet {
+		r.Router.HandlerFunc(http.MethodHead, path, hf)
+	}
+}
+
+func newRouter() *myRouter {
+	r := &myRouter{
+		Router: *httprouter.New(),
+	}
+	r.RedirectTrailingSlash = false
+	return r
+}
+
 // Handler returns an http.Handler that exposes all HTTPBin endpoints
 func (h *HTTPBin) Handler() http.Handler {
-	mux := http.NewServeMux()
+	mux := newRouter()
 
-	mux.HandleFunc("/", methods(h.Index, "GET"))
-	mux.HandleFunc("/forms/post", methods(h.FormsPost, "GET"))
-	mux.HandleFunc("/encoding/utf8", methods(h.UTF8, "GET"))
+	mux.HandlerFunc(http.MethodGet, "/", h.Index)
+	mux.HandlerFunc(http.MethodGet, "/forms/post", h.FormsPost)
+	mux.HandlerFunc(http.MethodGet, "/encoding/utf8", h.UTF8)
 
-	mux.HandleFunc("/get", methods(h.Get, "GET"))
-	mux.HandleFunc("/post", methods(h.RequestWithBody, "POST"))
-	mux.HandleFunc("/put", methods(h.RequestWithBody, "PUT"))
-	mux.HandleFunc("/patch", methods(h.RequestWithBody, "PATCH"))
-	mux.HandleFunc("/delete", methods(h.RequestWithBody, "DELETE"))
+	mux.HandlerFunc(http.MethodGet, "/get", h.Get)
+	mux.HandlerFunc(http.MethodPost, "/post", h.RequestWithBody)
+	mux.HandlerFunc(http.MethodPut, "/put", h.RequestWithBody)
+	mux.HandlerFunc(http.MethodPatch, "/patch", h.RequestWithBody)
+	mux.HandlerFunc(http.MethodDelete, "/delete", h.RequestWithBody)
 
-	mux.HandleFunc("/ip", h.IP)
-	mux.HandleFunc("/user-agent", h.UserAgent)
-	mux.HandleFunc("/headers", h.Headers)
-	mux.HandleFunc("/response-headers", h.ResponseHeaders)
+	mux.HandlerFunc(http.MethodGet, "/ip", h.IP)
+	mux.HandlerFunc(http.MethodGet, "/user-agent", h.UserAgent)
+	mux.HandlerFunc(http.MethodGet, "/headers", h.Headers)
+	mux.HandlerFunc(http.MethodGet, "/response-headers", h.ResponseHeaders)
 
-	mux.HandleFunc("/status/", h.Status)
+	mux.GET("/status/", h.Status)
+	mux.GET("/status/:code", h.Status)
 
-	mux.HandleFunc("/redirect/", h.Redirect)
-	mux.HandleFunc("/relative-redirect/", h.RelativeRedirect)
-	mux.HandleFunc("/absolute-redirect/", h.AbsoluteRedirect)
-	mux.HandleFunc("/redirect-to", h.RedirectTo)
+	mux.HandlerFunc(http.MethodGet, "/redirect/*path", h.Redirect)
+	mux.HandlerFunc(http.MethodGet, "/relative-redirect/*path", h.RelativeRedirect)
+	mux.HandlerFunc(http.MethodGet, "/absolute-redirect/*path", h.AbsoluteRedirect)
+	mux.HandlerFunc(http.MethodGet, "/redirect-to", h.RedirectTo)
 
-	mux.HandleFunc("/cookies", h.Cookies)
-	mux.HandleFunc("/cookies/set", h.SetCookies)
-	mux.HandleFunc("/cookies/delete", h.DeleteCookies)
+	mux.HandlerFunc(http.MethodGet, "/cookies", h.Cookies)
+	mux.HandlerFunc(http.MethodGet, "/cookies/set", h.SetCookies)
+	mux.HandlerFunc(http.MethodGet, "/cookies/delete", h.DeleteCookies)
 
-	mux.HandleFunc("/basic-auth/", h.BasicAuth)
-	mux.HandleFunc("/hidden-basic-auth/", h.HiddenBasicAuth)
-	mux.HandleFunc("/digest-auth/", h.DigestAuth)
-	mux.HandleFunc("/bearer", h.Bearer)
+	mux.GET("/basic-auth/", h.BasicAuth)
+	mux.GET("/basic-auth/:user/:password", h.BasicAuth)
 
-	mux.HandleFunc("/deflate", h.Deflate)
-	mux.HandleFunc("/gzip", h.Gzip)
+	mux.GET("/hidden-basic-auth/", h.HiddenBasicAuth)
+	mux.GET("/hidden-basic-auth/:user/:password", h.HiddenBasicAuth)
 
-	mux.HandleFunc("/stream/", h.Stream)
-	mux.HandleFunc("/delay/", h.Delay)
-	mux.HandleFunc("/drip", h.Drip)
+	mux.GET("/digest-auth/:qop/:user/:passwd", h.DigestAuth)
+	mux.GET("/digest-auth/:qop/:user/:passwd/:algorithm", h.DigestAuth)
+	mux.HandlerFunc(http.MethodGet, "/bearer", h.Bearer)
 
-	mux.HandleFunc("/range/", h.Range)
-	mux.HandleFunc("/bytes/", h.Bytes)
-	mux.HandleFunc("/stream-bytes/", h.StreamBytes)
+	mux.HandlerFunc(http.MethodGet, "/deflate", h.Deflate)
+	mux.HandlerFunc(http.MethodGet, "/gzip", h.Gzip)
 
-	mux.HandleFunc("/html", h.HTML)
-	mux.HandleFunc("/robots.txt", h.Robots)
-	mux.HandleFunc("/deny", h.Deny)
+	mux.GET("/stream/:n", h.Stream)
+	mux.GET("/delay/:delay", h.Delay)
+	mux.HandlerFunc(http.MethodGet, "/drip", h.Drip)
 
-	mux.HandleFunc("/cache", h.Cache)
-	mux.HandleFunc("/cache/", h.CacheControl)
-	mux.HandleFunc("/etag/", h.ETag)
+	mux.GET("/range/", h.Range)
+	mux.GET("/range/:range", h.Range)
+	mux.GET("/bytes/:numBytes", h.Bytes)
+	mux.GET("/stream-bytes/:numBytes", h.StreamBytes)
 
-	mux.HandleFunc("/links/", h.Links)
+	mux.HandlerFunc(http.MethodGet, "/html", h.HTML)
+	mux.HandlerFunc(http.MethodGet, "/robots.txt", h.Robots)
+	mux.HandlerFunc(http.MethodGet, "/deny", h.Deny)
 
-	mux.HandleFunc("/image", h.ImageAccept)
-	mux.HandleFunc("/image/", h.Image)
-	mux.HandleFunc("/xml", h.XML)
-	mux.HandleFunc("/json", h.JSON)
+	mux.HandlerFunc(http.MethodGet, "/cache", h.Cache)
+	mux.GET("/cache/:seconds", h.CacheControl)
+	mux.GET("/etag/:etag", h.ETag)
 
-	mux.HandleFunc("/uuid", h.UUID)
-	mux.HandleFunc("/base64/", h.Base64)
+	mux.GET("/links/:n", h.Links)
+	mux.GET("/links/:n/:offset", h.Links)
+
+	mux.HandlerFunc(http.MethodGet, "/image", h.ImageAccept)
+	mux.GET("/image/:kind", h.Image)
+	mux.HandlerFunc(http.MethodGet, "/xml", h.XML)
+	mux.HandlerFunc(http.MethodGet, "/json", h.JSON)
+
+	mux.HandlerFunc(http.MethodGet, "/uuid", h.UUID)
+	
+	/*
+	helper400:=func (w http.ResponseWriter, _ *http.Request, _ httprouter.Params) {
+		 http.Error(w,"Bad request",http.StatusBadRequest)
+	 }
+	 */
+
+	mux.GET("/base64/",h.Base64)
+	mux.GET("/base64/:arg1", h.Base64)
+	mux.GET("/base64/:arg1/",h.Base64)
+	mux.GET("/base64/:arg1/:arg2", h.Base64)
+	mux.GET("/base64/:arg1/:arg2/*path", h.Base64)
 
 	// existing httpbin endpoints that we do not support
-	mux.HandleFunc("/brotli", notImplementedHandler)
-
-	// Make sure our ServeMux doesn't "helpfully" redirect these invalid
-	// endpoints by adding a trailing slash. See the ServeMux docs for more
-	// info: https://golang.org/pkg/net/http/#ServeMux
-	mux.HandleFunc("/absolute-redirect", http.NotFound)
-	mux.HandleFunc("/basic-auth", http.NotFound)
-	mux.HandleFunc("/delay", http.NotFound)
-	mux.HandleFunc("/digest-auth", http.NotFound)
-	mux.HandleFunc("/hidden-basic-auth", http.NotFound)
-	mux.HandleFunc("/redirect", http.NotFound)
-	mux.HandleFunc("/relative-redirect", http.NotFound)
-	mux.HandleFunc("/status", http.NotFound)
-	mux.HandleFunc("/stream", http.NotFound)
-	mux.HandleFunc("/bytes", http.NotFound)
-	mux.HandleFunc("/stream-bytes", http.NotFound)
-	mux.HandleFunc("/links", http.NotFound)
+	mux.HandlerFunc(http.MethodGet, "/brotli", notImplementedHandler)
 
 	// Apply global middleware
 	var handler http.Handler

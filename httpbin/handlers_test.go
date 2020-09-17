@@ -96,7 +96,7 @@ func TestFormsPost(t *testing.T) {
 	handler.ServeHTTP(w, r)
 
 	assertContentType(t, w, htmlContentType)
-	assertBodyContains(t, w, `<form method="post" action="/post">`)
+	assertBodyContains(t, w, `<form method="post" action="./post">`)
 }
 
 func TestUTF8(t *testing.T) {
@@ -2255,11 +2255,11 @@ func TestBase64(t *testing.T) {
 		},
 		{
 			"/base64/",
-			"no input data",
+			"invalid URL",
 		},
 		{
 			"/base64/decode/",
-			"no input data",
+			"invalid URL",
 		},
 		{
 			"/base64/decode/dmFsaWRfYmFzZTY0X2VuY29kZWRfc3RyaW5n/extra",
