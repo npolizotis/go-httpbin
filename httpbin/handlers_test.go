@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"compress/zlib"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,7 +28,14 @@ const maxBodySize int64 = 1024 * 1024
 const maxDuration time.Duration = 1 * time.Second
 const alphanumLetters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
+var testDefaultParams = DefaultParams{
+	DripDelay:    0,
+	DripDuration: 100 * time.Millisecond,
+	DripNumBytes: 10,
+}
+
 var app = New(
+	WithDefaultParams(testDefaultParams),
 	WithMaxBodySize(maxBodySize),
 	WithMaxDuration(maxDuration),
 	WithObserver(StdLogObserver(log.New(ioutil.Discard, "", 0))),
@@ -701,8 +709,26 @@ func TestStatus(t *testing.T) {
 		body    string
 	}{
 		{200, nil, ""},
+		{300, map[string]string{"Location": "/image/jpeg"}, `<!doctype html>
+<head>
+<title>Multiple Choices</title>
+</head>
+<body>
+<ul>
+<li><a href="/image/jpeg">/image/jpeg</a></li>
+<li><a href="/image/png">/image/png</a></li>
+<li><a href="/image/svg">/image/svg</a></li>
+</body>
+</html>`},
 		{301, redirectHeaders, ""},
 		{302, redirectHeaders, ""},
+		{308, map[string]string{"Location": "/image/jpeg"}, `<!doctype html>
+<head>
+<title>Permanent Redirect</title>
+</head>
+<body>Permanently redirected to <a href="/image/jpeg">/image/jpeg</a>
+</body>
+</html>`},
 		{401, unauthorizedHeaders, ""},
 		{418, nil, "I'm a teapot!"},
 	}
@@ -1444,6 +1470,19 @@ func TestDelay(t *testing.T) {
 		}
 	})
 
+	t.Run("cancelation causes 499", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+		defer cancel()
+
+		r, _ := http.NewRequestWithContext(ctx, "GET", "/delay/1s", nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+
+		if w.Code != 499 {
+			t.Errorf("expected 499 response, got %d", w.Code)
+		}
+	})
+
 	var badTests = []struct {
 		url  string
 		code int
@@ -1507,7 +1546,6 @@ func TestDrip(t *testing.T) {
 	for _, test := range okTests {
 		t.Run(fmt.Sprintf("ok/%s", test.params.Encode()), func(t *testing.T) {
 			url := "/drip?" + test.params.Encode()
-
 			start := time.Now()
 
 			r, _ := http.NewRequest("GET", url, nil)
@@ -1516,8 +1554,9 @@ func TestDrip(t *testing.T) {
 
 			elapsed := time.Since(start)
 
-			assertHeader(t, w, "Content-Type", "application/octet-stream")
 			assertStatusCode(t, w, test.code)
+			assertHeader(t, w, "Content-Type", "application/octet-stream")
+			assertHeader(t, w, "Content-Length", strconv.Itoa(test.numbytes))
 			if len(w.Body.Bytes()) != test.numbytes {
 				t.Fatalf("expected %d bytes, got %d", test.numbytes, len(w.Body.Bytes()))
 			}
@@ -1532,13 +1571,29 @@ func TestDrip(t *testing.T) {
 		srv := httptest.NewServer(handler)
 		defer srv.Close()
 
+		// For this test, we expect the client to time out and cancel the
+		// request after 10ms.  The handler should immediately write a 200 OK
+		// status before the client timeout, preventing a client error, but it
+		// will wait 500ms to write anything to the response body.
+		//
+		// So, we're testing that a) the client got an immediate 200 OK but
+		// that b) the response body was empty.
 		client := http.Client{
 			Timeout: time.Duration(10 * time.Millisecond),
 		}
 		resp, err := client.Get(srv.URL + "/drip?duration=500ms&delay=500ms")
-		if err == nil {
-			body, _ := ioutil.ReadAll(resp.Body)
-			t.Fatalf("expected timeout error, got %d %s", resp.StatusCode, body)
+		if err != nil {
+			t.Fatalf("unexpected error: %s", err)
+		}
+		defer resp.Body.Close()
+
+		body, _ := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatalf("error reading response body: %s", err)
+		}
+
+		if len(body) != 0 {
+			t.Fatalf("expected client timeout before body was written, got body %q", string(body))
 		}
 	})
 
@@ -1604,6 +1659,29 @@ func TestDrip(t *testing.T) {
 			assertStatusCode(t, w, test.code)
 		})
 	}
+
+	t.Run("ensure HEAD request works with streaming responses", func(t *testing.T) {
+		srv := httptest.NewServer(handler)
+		defer srv.Close()
+
+		resp, err := http.Head(srv.URL + "/drip?duration=900ms&delay=100ms")
+		if err != nil {
+			t.Fatalf("unexpected error: %s", err)
+		}
+		defer resp.Body.Close()
+
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatalf("error reading response body: %s", err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("expected HTTP 200 OK rsponse, got %d", resp.StatusCode)
+		}
+		if bodySize := len(body); bodySize > 0 {
+			t.Fatalf("expected empty body from HEAD request, bot: %s", string(body))
+		}
+	})
 }
 
 func TestRange(t *testing.T) {

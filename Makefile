@@ -1,12 +1,24 @@
-.PHONY: clean deploy deps image imagepush lint run stagedeploy test testci testcover
+.PHONY: clean deploy deps gcloud-auth image imagepush lint run stagedeploy test testci testcover
 
 # The version that will be used in docker tags (e.g. to push a
 # go-httpbin:latest image use `make imagepush VERSION=latest)`
-VERSION        ?= $(shell git rev-parse --short HEAD)
+VERSION ?= $(shell git rev-parse --short HEAD)
 
-# Override these values to deploy to a different App Engine project
+# Override these values to deploy to a different Cloud Run project
 GCLOUD_PROJECT ?= httpbingo
 GCLOUD_ACCOUNT ?= mccutchen@gmail.com
+GCLOUD_REGION  ?= us-central1
+
+# The version tag for the Cloud Run deployment (override this to adjust
+# pre-production URLs)
+GCLOUD_TAG ?= "v-$(VERSION)"
+
+# Run gcloud in a container to avoid needing to install the SDK locally
+GCLOUD_COMMAND ?= ./bin/gcloud
+
+# We push docker images to both docker hub and gcr.io
+DOCKER_TAG_DOCKERHUB ?= mccutchen/go-httpbin:$(VERSION)
+DOCKER_TAG_GCLOUD    ?= gcr.io/$(GCLOUD_PROJECT)/go-httpbin:$(VERSION)
 
 # Built binaries will be placed here
 DIST_PATH  	  ?= dist
@@ -31,7 +43,7 @@ GENERATED_ASSETS_PATH := httpbin/assets/assets_vfsdata.go
 .PHONY: build
 build: $(DIST_PATH)/go-httpbin
 
-$(DIST_PATH)/go-httpbin : assets $(GO_SOURCES)
+$(DIST_PATH)/go-httpbin: assets $(GO_SOURCES)
 	mkdir -p $(DIST_PATH)
 	CGO_ENABLED=0 go build -ldflags="-s -w" -o $(DIST_PATH)/go-httpbin ./cmd/go-httpbin
 
@@ -54,11 +66,13 @@ $(GENERATED_ASSETS_PATH):  static/*
 test:
 	go test $(TEST_ARGS) ./...
 
+
 # Test command to run for continuous integration, which includes code coverage
 # based on codecov.io's documentation:
 # https://github.com/codecov/example-go/blob/b85638743b972bd0bd2af63421fe513c6f968930/README.md
-testci:
+testci: build
 	go test $(TEST_ARGS) $(COVERAGE_ARGS) ./...
+	git diff --exit-code
 
 testcover: testci
 	go tool cover -html=$(COVERAGE_PATH)
@@ -71,26 +85,62 @@ lint: $(TOOL_GOLINT) $(TOOL_STATICCHECK)
 
 
 # =============================================================================
-# deploy & run locally
+# run locally
 # =============================================================================
-deploy: build
-	gcloud --account=$(GCLOUD_ACCOUNT) app deploy --quiet --project=$(GCLOUD_PROJECT) --version=$(VERSION) --promote
-
-stagedeploy: build
-	gcloud --account=$(GCLOUD_ACCOUNT) app deploy --quiet --project=$(GCLOUD_PROJECT) --version=$(VERSION) --no-promote
-
 run: build
 	$(DIST_PATH)/go-httpbin
+
+watch: $(TOOL_REFLEX)
+	reflex -s -r '\.(go|html)$$' make run
+
+
+# =============================================================================
+# deploy to fly.io
+# =============================================================================
+deploy:
+	flyctl deploy --strategy=rolling
+
+
+# =============================================================================
+# deploy to google cloud run
+# =============================================================================
+deploy-cloud-run: gcloud-auth imagepush
+	$(GCLOUD_COMMAND) beta run deploy \
+		$(GCLOUD_PROJECT) \
+		--image=$(DOCKER_TAG_GCLOUD) \
+		--revision-suffix=$(VERSION) \
+		--tag=$(GCLOUD_TAG) \
+		--project=$(GCLOUD_PROJECT) \
+		--region=$(GCLOUD_REGION) \
+		--allow-unauthenticated \
+		--platform=managed
+	$(GCLOUD_COMMAND) run services update-traffic --to-latest
+
+stagedeploy-cloud-run: gcloud-auth imagepush
+	$(GCLOUD_COMMAND) beta run deploy \
+		$(GCLOUD_PROJECT) \
+		--image=$(DOCKER_TAG_GCLOUD) \
+		--revision-suffix=$(VERSION) \
+		--tag=$(GCLOUD_TAG) \
+		--project=$(GCLOUD_PROJECT) \
+		--region=$(GCLOUD_REGION) \
+		--allow-unauthenticated \
+		--platform=managed \
+		--no-traffic
+
+gcloud-auth:
+	@$(GCLOUD_COMMAND) auth list | grep '^\*' | grep -q $(GCLOUD_ACCOUNT) || $(GCLOUD_COMMAND) auth login $(GCLOUD_ACCOUNT)
+	@$(GCLOUD_COMMAND) auth print-access-token | docker login -u oauth2accesstoken --password-stdin https://gcr.io
 
 
 # =============================================================================
 # docker images
 # =============================================================================
 image:
-	docker build -t mccutchen/go-httpbin:$(VERSION) .
+	docker build -t $(DOCKER_TAG_DOCKERHUB) .
 
 imagepush: image
-	docker push mccutchen/go-httpbin:$(VERSION)
+	docker push $(DOCKER_TAG_DOCKERHUB)
 
 
 # =============================================================================
@@ -102,6 +152,9 @@ deps:  $(TOOL_GOLINT) $(TOOL_STATICCHECK)
 
 $(TOOL_GOLINT):
 	cd /tmp && go get -u golang.org/x/lint/golint
+
+$(TOOL_REFLEX):
+	cd /tmp && go get -u github.com/cespare/reflex
 
 $(TOOL_STATICCHECK):
 	cd /tmp && go get -u honnef.co/go/tools/cmd/staticcheck
